@@ -1,0 +1,2 @@
+[mod]
+!mod <rapidTag> - request a server-side Rapid mod download (e.g. !mod dev-mods:underwater-afus). Normal users vote; privileged users may execute directly.
