@@ -89,6 +89,16 @@ jobs:
           ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /tmp/spads-github-deploy/etc /tmp/spads-github-deploy/deploy'
           rsync -az --delete -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" etc/ "$USER@$HOST:/tmp/spads-github-deploy/etc/"
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/deploy-config.py "$USER@$HOST:/tmp/spads-github-deploy/deploy/deploy-config.py"
+      - name: Stage RapidMods plugin and downloader without restarting SPADS
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /srv/spads/plugins/officials/RapidMods /srv/spads/deploy'
+          rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" plugins/officials/RapidMods/ "$USER@$HOST:/srv/spads/plugins/officials/RapidMods/"
+          rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/download-rapid-mod.py deploy/mod-catalog-lookup.py "$USER@$HOST:/srv/spads/deploy/"
       - name: Deploy without restarting SPADS
         if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
