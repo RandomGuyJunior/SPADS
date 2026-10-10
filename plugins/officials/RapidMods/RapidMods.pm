@@ -69,10 +69,12 @@ sub hMod {
       $busy = 0;
       if($rc == 0) {
         slog("Rapid download completed for $tag",3);
+        sayBattleEx("[RapidMods] installed $tag") if(getLobbyState() > 3);
         sayPrivate($user,"Rapid download completed for $tag. Archive refresh may be required.")
           if(getLobbyState() > 3 && exists getLobbyInterface()->{users}->{$user});
       } else {
         slog("Rapid download failed for $tag (exit $rc)",2);
+        sayBattleEx("[RapidMods] failed $tag") if(getLobbyState() > 3);
         sayPrivate($user,"Rapid download failed for $tag (exit $rc). Check SPADS logs.")
           if(getLobbyState() > 3 && exists getLobbyInterface()->{users}->{$user});
       }
