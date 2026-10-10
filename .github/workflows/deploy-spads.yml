@@ -63,6 +63,12 @@ jobs:
           chmod 600 ~/.ssh/spads_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          # Validate key material before attempting any network connection.
+          # This detects escaped newlines, truncated keys and wrong secret values.
+          if ! ssh-keygen -y -P '' -f ~/.ssh/spads_deploy > /dev/null 2>&1; then
+            echo "::error::SPADS_DEPLOY_SSH_KEY is not a valid unencrypted SSH private key. Paste the entire multiline PRIVATE key (including BEGIN/END lines) into the spads-production environment secret; do not paste the .pub key or literal \\n sequences."
+            exit 1
+          fi
       - name: Verify SSH connection and live directory (read-only)
         env:
           HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
