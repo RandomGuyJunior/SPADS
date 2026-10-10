@@ -1,0 +1,20 @@
+name: Test SPADS mod catalogue lookup
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'deploy/mod-catalog-lookup.py'
+      - 'deploy/test-mod-catalog-lookup.py'
+      - '.github/workflows/test-mod-catalog.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run catalogue lookup unit tests
+        run: python3 -m unittest discover -s deploy -p 'test-mod-catalog-lookup.py'
