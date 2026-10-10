@@ -8,6 +8,19 @@ my $requiredSpadsVersion = '0.11.4';
 my %params = (commandsFile => ['notNull'], helpFile => ['notNull']);
 my $busy = 0;
 
+# SPADS invokes this before checking direct/vote access. Only the battle
+# membership held by SPADS can authorize the sole-participant exception.
+sub commandRightsOverride {
+  my ($self,$command,$params,$source,$user,$level,$originalLevel,$rights) = @_;
+  return unless($command eq 'mod' && ($source eq 'battle' || $source eq 'pv'));
+  my $lobby = getLobbyInterface();
+  return unless($lobby && $lobby->{battle} && $lobby->{battle}{users});
+  my @participants = grep { $_ ne getSpadsConf()->{lobbyLogin} } keys %{$lobby->{battle}{users}};
+  return unless(@participants == 1 && $participants[0] eq $user);
+  return 1;
+}
+
+
 sub getVersion { return $pluginVersion }
 sub getRequiredSpadsVersion { return $requiredSpadsVersion }
 sub getParams { return [\%params, {}] }
@@ -47,8 +60,8 @@ sub hMod {
   return 1 if($checkOnly);
   my $pid = forkProcess(
     sub {
-      exec('python3',$script,$tag,'--data-dir',$dataDir);
-      exit 127;
+      my $rc = system('python3',$script,$tag,'--data-dir',$dataDir);
+      exit($rc == -1 ? 127 : ($rc & 127 ? 128 + ($rc & 127) : ($rc >> 8)));
     },
     sub {
       my ($rc) = @_;
