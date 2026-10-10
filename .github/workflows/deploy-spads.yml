@@ -7,6 +7,12 @@ on:
       - 'etc/**'
       - 'deploy/**'
       - '.github/workflows/deploy-spads.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'etc/**'
+      - 'deploy/**'
+      - '.github/workflows/deploy-spads.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +23,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  security-check:
+    name: Check deployment credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject hardcoded credentials
+        run: python3 deploy/check-secrets.py
+
   deploy:
+    needs: security-check
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: spads-production
     steps:
