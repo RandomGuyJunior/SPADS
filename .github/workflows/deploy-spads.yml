@@ -6,8 +6,16 @@ on:
     paths:
       - 'etc/**'
       - 'deploy/**'
-      - '.github/workflows/deploy-spads.yml'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Choose a safe connection test or an actual deployment'
+        required: true
+        type: choice
+        default: connection-test
+        options:
+          - connection-test
+          - deploy
 
 permissions:
   contents: read
@@ -27,6 +35,7 @@ jobs:
 
   deploy:
     needs: security-check
+    if: github.event_name == 'push' || inputs.operation == 'deploy'
     runs-on: ubuntu-latest
     environment: spads-production
     steps:
@@ -54,7 +63,24 @@ jobs:
           chmod 600 ~/.ssh/spads_deploy
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+      - name: Verify SSH connection and live directory (read-only)
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=15 "$USER@$HOST" '
+            set -eu
+            test -d /srv/spads/etc
+            test -r /srv/spads/etc
+            test -x /srv/spads/etc
+            test -w /srv/spads/etc
+            command -v python3 >/dev/null
+            command -v rsync >/dev/null
+            echo "Connection successful; SPADS directory accessible and writable. No files changed."
+          '
       - name: Upload approved deployment files
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
           HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
           USER: ${{ secrets.SPADS_DEPLOY_USER }}
@@ -64,6 +90,7 @@ jobs:
           rsync -az --delete -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" etc/ "$USER@$HOST:/tmp/spads-github-deploy/etc/"
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/deploy-config.py "$USER@$HOST:/tmp/spads-github-deploy/deploy/deploy-config.py"
       - name: Deploy without restarting SPADS
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
           HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
           USER: ${{ secrets.SPADS_DEPLOY_USER }}
