@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """Read-only lookup in RandomGuyJunior/DevelopmentEnvironment's published mod catalogue."""
 import argparse
+import base64
 import json
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-CATALOG_URL = "https://raw.githubusercontent.com/RandomGuyJunior/DevelopmentEnvironment/main/mods.json"
+CATALOG_URL = "https://api.github.com/repos/RandomGuyJunior/DevelopmentEnvironment/contents/mods.json?ref=main"
 
 
 def get_mods(url=CATALOG_URL):
-    req = Request(url, headers={"User-Agent": "SPADS-mod-catalog-lookup/1.0"})
+    req = Request(url, headers={"User-Agent": "SPADS-mod-catalog-lookup/1.0", "Accept": "application/vnd.github+json", "Cache-Control": "no-cache"})
     with urlopen(req, timeout=12) as response:
-        data = json.load(response)
+        payload = json.load(response)
+    if not isinstance(payload, dict) or payload.get("encoding") != "base64" or not isinstance(payload.get("content"), str):
+        raise ValueError("Unexpected GitHub Contents API response")
+    data = json.loads(base64.b64decode(payload["content"], validate=False))
     if not isinstance(data, dict) or data.get("schema_version") != 1 or not isinstance(data.get("mods"), list):
         raise ValueError("Unsupported or malformed mod catalogue")
     return data["mods"]
