@@ -1,0 +1,63 @@
+name: Deploy SPADS configuration
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'etc/**'
+      - 'deploy/**'
+      - '.github/workflows/deploy-spads.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spads-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: spads-production
+    steps:
+      - name: Check deployment configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.SPADS_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.SPADS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SPADS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          for name in DEPLOY_HOST DEPLOY_USER DEPLOY_KEY KNOWN_HOSTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing $name; configure the spads-production environment secrets."
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@v4
+      - name: Configure deployment SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.SPADS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SPADS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/spads_deploy
+          chmod 600 ~/.ssh/spads_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Upload approved deployment files
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /tmp/spads-github-deploy/etc /tmp/spads-github-deploy/deploy'
+          rsync -az --delete -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" etc/ "$USER@$HOST:/tmp/spads-github-deploy/etc/"
+          rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/deploy-config.py "$USER@$HOST:/tmp/spads-github-deploy/deploy/deploy-config.py"
+      - name: Deploy without restarting SPADS
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" \
+            'python3 /tmp/spads-github-deploy/deploy/deploy-config.py /tmp/spads-github-deploy/etc /srv/spads/etc'
