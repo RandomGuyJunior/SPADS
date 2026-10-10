@@ -13,6 +13,7 @@ my $busy = 0;
 sub commandRightsOverride {
   my ($self,$command,$params,$source,$user,$level,$originalLevel,$rights) = @_;
   return unless($command eq 'mod' && ($source eq 'battle' || $source eq 'pv'));
+  return 1 if(exists $main::bosses{$user});
   my $lobby = getLobbyInterface();
   return unless($lobby && $lobby->{battle} && $lobby->{battle}{users});
   my @participants = grep { $_ ne getSpadsConf()->{lobbyLogin} } keys %{$lobby->{battle}{users}};
