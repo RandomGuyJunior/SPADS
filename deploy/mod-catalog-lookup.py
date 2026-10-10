@@ -1,62 +1,84 @@
 #!/usr/bin/env python3
-"""Read-only lookup in RandomGuyJunior/DevelopmentEnvironment's published mod catalogue."""
+"""Check live Rapid indexes for an exact published package tag (read-only)."""
 import argparse
-import base64
-import json
+import gzip
 import sys
-from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-CATALOG_URL = "https://api.github.com/repos/RandomGuyJunior/DevelopmentEnvironment/contents/mods.json?ref=main"
+MASTER_URL = "https://randomguyrapid.duckdns.org/repos.gz"
+MAX_BYTES = 16 * 1024 * 1024
 
 
-def get_mods(url=CATALOG_URL):
-    req = Request(url, headers={"User-Agent": "SPADS-mod-catalog-lookup/1.0", "Accept": "application/vnd.github+json", "Cache-Control": "no-cache"})
-    with urlopen(req, timeout=12) as response:
-        payload = json.load(response)
-    if not isinstance(payload, dict) or payload.get("encoding") != "base64" or not isinstance(payload.get("content"), str):
-        raise ValueError("Unexpected GitHub Contents API response")
-    data = json.loads(base64.b64decode(payload["content"], validate=False))
-    if not isinstance(data, dict) or data.get("schema_version") != 1 or not isinstance(data.get("mods"), list):
-        raise ValueError("Unsupported or malformed mod catalogue")
-    return data["mods"]
+class LookupError(Exception):
+    pass
 
 
-def lookup(mods, query, include_disabled=False):
-    needle = query.strip().casefold()
-    if not needle:
-        raise ValueError("Mod identifier or name must not be empty")
-    results = []
-    for mod in mods:
-        if not isinstance(mod, dict):
+def fetch_index(url):
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise LookupError("Rapid index URL must use HTTPS")
+    request = Request(url, headers={"User-Agent": "SPADS-Rapid-Lookup/1.0", "Cache-Control": "no-cache"})
+    with urlopen(request, timeout=12) as response:
+        if urlparse(response.geturl()).scheme != "https":
+            raise LookupError("Rapid index redirected to non-HTTPS URL")
+        raw = response.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise LookupError("Rapid index exceeds size limit")
+    try:
+        decoded = gzip.decompress(raw) if raw.startswith(b"\x1f\x8b") else raw
+        if len(decoded) > MAX_BYTES:
+            raise LookupError("Decompressed Rapid index exceeds size limit")
+        return decoded.decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise LookupError("Invalid Rapid index encoding") from exc
+
+
+def parse_repositories(index):
+    repositories = {}
+    for line in index.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
             continue
-        if not include_disabled and mod.get("enabled", True) is not True:
-            continue
-        fields = (mod.get("id"), mod.get("name"), mod.get("rapid_tag"))
-        if any(isinstance(field, str) and field.casefold() == needle for field in fields):
-            results.append(mod)
-    return results
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            raise LookupError("Malformed repos.gz entry")
+        repositories[parts[0]] = parts[1].rstrip("/")
+    return repositories
+
+
+def find_tag(tag, master_url=MASTER_URL, fetch=fetch_index):
+    if tag.count(":") != 1 or not all(tag.split(":")) or any(c.isspace() for c in tag):
+        raise ValueError("Provide a full Rapid tag such as randomguy-hosting:test")
+    repo_name = tag.split(":", 1)[0]
+    repos = parse_repositories(fetch(master_url))
+    if repo_name not in repos:
+        return None
+    base_url = repos[repo_name]
+    parsed = urlparse(base_url)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise LookupError("Invalid repository URL in repos.gz")
+    versions = fetch(base_url + "/versions.gz")
+    for line in versions.splitlines():
+        if line.split(",", 1)[0].strip() == tag:
+            return line
+    return None
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Look up a mod in the development catalogue, without installing it.")
-    parser.add_argument("mod", help="Exact catalogue ID, display name, or Rapid tag")
-    parser.add_argument("--include-disabled", action="store_true", help="Include disabled catalogue entries")
-    parser.add_argument("--catalog-url", default=CATALOG_URL, help="Override source for testing")
+    parser = argparse.ArgumentParser(description="Live, read-only Rapid package existence check")
+    parser.add_argument("tag", help="Exact Rapid tag (repo:version)")
+    parser.add_argument("--master-url", default=MASTER_URL)
     args = parser.parse_args()
     try:
-        matches = lookup(get_mods(args.catalog_url), args.mod, args.include_disabled)
-    except (HTTPError, URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"Catalogue lookup failed: {exc}", file=sys.stderr)
+        result = find_tag(args.tag, args.master_url)
+    except (LookupError, ValueError, OSError, TimeoutError) as exc:
+        print(f"LOOKUP ERROR: {exc}", file=sys.stderr)
         return 2
-    if not matches:
-        print(f"NOT FOUND: {args.mod} (no matching {'entry' if args.include_disabled else 'enabled entry'})")
+    if result is None:
+        print(f"NOT PUBLISHED: {args.tag}")
         return 1
-    for mod in matches:
-        print(json.dumps({
-            key: mod.get(key) for key in
-            ("id", "name", "version", "rapid_tag", "rapid_repo", "enabled", "dependencies")
-        }, ensure_ascii=False))
+    print(f"PUBLISHED: {result}")
     return 0
 
 
