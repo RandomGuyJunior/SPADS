@@ -7,12 +7,6 @@ on:
       - 'etc/**'
       - 'deploy/**'
       - '.github/workflows/deploy-spads.yml'
-  pull_request:
-    branches: [master]
-    paths:
-      - 'etc/**'
-      - 'deploy/**'
-      - '.github/workflows/deploy-spads.yml'
   workflow_dispatch:
 
 permissions:
@@ -33,7 +27,6 @@ jobs:
 
   deploy:
     needs: security-check
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: spads-production
     steps:
