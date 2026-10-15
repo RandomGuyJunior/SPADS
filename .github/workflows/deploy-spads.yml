@@ -7,6 +7,7 @@ on:
       - 'etc/**'
       - 'deploy/**'
       - 'plugins/officials/RapidMods/**'
+      - '.github/workflows/deploy-spads.yml'
   workflow_dispatch:
     inputs:
       operation:
@@ -106,6 +107,17 @@ jobs:
           ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /srv/spads/plugins/officials/RapidMods /srv/spads/deploy'
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" plugins/officials/RapidMods/ "$USER@$HOST:/srv/spads/plugins/officials/RapidMods/"
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/download-rapid-mod.py deploy/mod-catalog-lookup.py "$USER@$HOST:/srv/spads/deploy/"
+      - name: Verify RapidMods capability deployed
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" '
+            set -eu
+            grep -nF "hub-v1" /srv/spads/plugins/officials/RapidMods/RapidMods.pm
+          '
       - name: Deploy without restarting SPADS
         if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
