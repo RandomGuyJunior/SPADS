@@ -6,6 +6,7 @@ on:
     paths:
       - 'etc/**'
       - 'deploy/**'
+      - 'plugins/officials/RapidMods/**'
   workflow_dispatch:
     inputs:
       operation:
