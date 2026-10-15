@@ -43,12 +43,25 @@ def install(tag, data_dir, downloader="pr-downloader", timeout=1800, dry_run=Fal
     published = lookup.find_tag(tag)
     if published is None:
         raise RuntimeError(f"Rapid tag is not published: {tag}")
-    command = [tool, "--filesystem-writepath", str(data), "--download-game", tag]
+    # Match the launcher's explicit Rapid repository and disable the streamer.
+    rapid_repo = lookup.MASTER_URL
+    env = os.environ.copy()
+    env["PRD_RAPID_REPO_MASTER"] = rapid_repo
+    env["PRD_RAPID_USE_STREAMER"] = "false"
+
+    # Refresh the cached repository index to discover newly published repos.
+    from urllib.parse import urlparse
+    repo_host = urlparse(rapid_repo).hostname
+    cached_index = data / "rapid" / repo_host / "repos.gz"
+    if cached_index.is_file():
+        cached_index.unlink()
+
+    command = [tool, "--filesystem-writepath", str(data), "--rapid-download", tag]
     print("Published Rapid tag verified:", published.split(",", 1)[0], flush=True)
     print("Downloader:", " ".join(command), flush=True)
     if dry_run:
         return
-    result = subprocess.run(command, cwd=data, timeout=timeout, check=False)
+    result = subprocess.run(command, cwd=data, env=env, timeout=timeout, check=False)
     if result.returncode:
         raise RuntimeError(f"pr-downloader exited with code {result.returncode}")
     print(f"Download command completed for {tag}. Verify archive resolution before selecting it in SPADS.")
