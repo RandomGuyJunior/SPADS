@@ -8,6 +8,18 @@ my $requiredSpadsVersion = '0.11.4';
 my %params = (commandsFile => ['notNull'], helpFile => ['notNull']);
 my $busy = 0;
 
+# The client requires a positive capability announcement from the battle founder.
+# An official SPADS host does not advertise this protocol.
+sub advertiseModHub {
+  return 1 unless(getLobbyState() > 5);
+  sayBattleEx('[RapidMods] hub-v1');
+  return 1;
+}
+
+sub onJoinedBattle { advertiseModHub() }
+sub onBattleOpened { advertiseModHub() }
+
+
 # SPADS invokes this before checking direct/vote access. Only the battle
 # membership held by SPADS can authorize the sole-participant exception.
 sub commandRightsOverride {
@@ -29,12 +41,15 @@ sub getParams { return [\%params, {}] }
 sub new {
   my $self = bless({}, shift);
   addSpadsCommandHandler({mod => \&hMod});
+  # Periodic refresh covers clients which join during the initial announcement.
+  addTimer('RapidModsAdvertise',3,8,\&advertiseModHub);
   slog('RapidMods command handler loaded',3);
   return $self;
 }
 
 sub onUnload {
   removeSpadsCommandHandler(['mod']);
+  removeTimer('RapidModsAdvertise');
 }
 
 sub hMod {
