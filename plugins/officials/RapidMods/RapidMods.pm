@@ -42,14 +42,13 @@ sub new {
   my $self = bless({}, shift);
   addSpadsCommandHandler({mod => \&hMod});
   # Periodic refresh covers clients which join during the initial announcement.
-  addTimer('RapidModsAdvertise',3,8,\&advertiseModHub);
+  # Capability is announced when the battle opens and when clients join; no periodic chat spam.
   slog('RapidMods command handler loaded',3);
   return $self;
 }
 
 sub onUnload {
   removeSpadsCommandHandler(['mod']);
-  removeTimer('RapidModsAdvertise');
 }
 
 sub hMod {
