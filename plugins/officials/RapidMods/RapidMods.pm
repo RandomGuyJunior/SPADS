@@ -152,10 +152,15 @@ sub hModActivate {
         }
         # The game wrapper declares this name + version. SPADS resolves the
         # regex to a concrete installed archive after the archive refresh.
-        updateSetting('hSet','modName','~RandomGuy Modded Battle.*');
-        rehost('RapidMods activated dependency wrapper');
-        sayBattle('[RapidMods] modded game prepared; battle rehost scheduled')
+        # Do not call updateSetting(hSet/modName) here: core SPADS uses
+        # that setting for the next OPENBATTLE, and does not update the
+        # advertised game in the currently open battle.
+        # Similarly, rehost() closes the battle and loses the desired room.
+        # Keep the currently advertised game unchanged until TEI implements
+        # an acknowledged, host-authorized in-place game update.
+        sayBattle('[RapidMods] dependencies prepared; in-place battle game switch pending TEI support')
           if(getLobbyState() > 3);
+        slog('RapidMods prepared wrapper; not switching game until TEI in-place update is implemented',3);
       }, 0, 2);
     }
   );
