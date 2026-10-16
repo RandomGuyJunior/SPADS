@@ -9,6 +9,10 @@ import argparse
 from pathlib import Path
 import re
 import shutil
+import hashlib
+import json
+import os
+import tempfile
 
 ARCHIVE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _().+\\-]*$")
 def validate(name):
@@ -60,12 +64,48 @@ def main():
     if not args.modoptions.is_file():
         p.error("RandomGuy Hosting modoptions.lua export is missing")
     output = args.output_dir
-    output.mkdir(parents=True, exist_ok=True)
-    (output / "modinfo.lua").write_text(
-        generate(args.foundation_archive, args.mod_archive), encoding="utf-8")
-    shutil.copyfile(args.modoptions, output / "modoptions.lua")
-    print("Generated:", output)
-    print("This is NOT published or selected as SPADS battle game.")
+    manifest = generate(args.foundation_archive, args.mod_archive)
+    options = args.modoptions.read_bytes()
+    fingerprint = hashlib.sha256(manifest.encode("utf-8") + b"\\0" + options).hexdigest()
+    metadata = json.dumps({
+        "schema_version": 1,
+        "fingerprint": fingerprint,
+        "foundation_archive": args.foundation_archive,
+        "mod_archives": list(dict.fromkeys(args.mod_archive)),
+    }, sort_keys=True, indent=2) + "\\n"
+    old_info = output / "modinfo.lua"
+    old_options = output / "modoptions.lua"
+    if (old_info.is_file() and old_options.is_file()
+            and old_info.read_text(encoding="utf-8") == manifest
+            and old_options.read_bytes() == options):
+        print("Unchanged; no archive refresh needed:", output)
+        print("Fingerprint:", fingerprint)
+        return
+    # Stage all content before replacing the wrapper, keeping a usable
+    # previous configuration if preparation fails.
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".rgmod-stage-", dir=output.parent) as temp:
+        staged = Path(temp)
+        (staged / "modinfo.lua").write_text(manifest, encoding="utf-8")
+        (staged / "modoptions.lua").write_bytes(options)
+        (staged / "rapidmods-state.json").write_text(metadata, encoding="utf-8")
+        if output.exists():
+            backup = output.with_name(output.name + ".previous")
+            if backup.exists():
+                shutil.rmtree(backup)
+            output.rename(backup)
+            try:
+                staged.rename(output)
+            except BaseException:
+                backup.rename(output)
+                raise
+            shutil.rmtree(backup)
+        else:
+            staged.rename(output)
+    print("Prepared local game wrapper:", output)
+    print("Fingerprint:", fingerprint)
+    print("Archive refresh required on SPADS before selecting this game.")
+    print("Still requires synchronized client wrappers and battle game selection.")
 
 if __name__ == "__main__":
     main()
