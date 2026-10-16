@@ -2,3 +2,5 @@
 !mod <rapidTag> - request a server-side Rapid mod download (e.g. !mod dev-mods:underwater-afus). Normal users vote; privileged users may execute directly.
 [modstatus]
 !modstatus - privately return SPADS downloaded Rapid mods (not necessarily active in this battle).
+[modactivate]
+!modactivate - prepare one game wrapper with ALL successfully downloaded RapidMods and schedule a rehost. Requires privileged access.
