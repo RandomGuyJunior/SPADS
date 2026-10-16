@@ -94,6 +94,7 @@ sub hMod {
     return 0;
   }
   $busy = 1;
+  sayBattle("[RapidMods] installing $tag") if(getLobbyState() > 3);
   answer("Rapid download started for $tag.");
   return 1;
 }
