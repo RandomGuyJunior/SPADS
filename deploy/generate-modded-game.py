@@ -66,13 +66,13 @@ def main():
     output = args.output_dir
     manifest = generate(args.foundation_archive, args.mod_archive)
     options = args.modoptions.read_bytes()
-    fingerprint = hashlib.sha256(manifest.encode("utf-8") + b"\\0" + options).hexdigest()
+    fingerprint = hashlib.sha256(manifest.encode("utf-8") + bytes([0]) + options).hexdigest()
     metadata = json.dumps({
         "schema_version": 1,
         "fingerprint": fingerprint,
         "foundation_archive": args.foundation_archive,
         "mod_archives": list(dict.fromkeys(args.mod_archive)),
-    }, sort_keys=True, indent=2) + "\\n"
+    }, sort_keys=True, indent=2) + chr(10)
     old_info = output / "modinfo.lua"
     old_options = output / "modoptions.lua"
     if (old_info.is_file() and old_options.is_file()
