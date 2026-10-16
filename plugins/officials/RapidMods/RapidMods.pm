@@ -83,13 +83,89 @@ sub getParams { return [\%params, {}] }
 sub new {
   my $self = bless({}, shift);
   loadDownloaded();
-  addSpadsCommandHandler({mod => \&hMod, modstatus => \&hModStatus});
+  addSpadsCommandHandler({mod => \&hMod, modstatus => \&hModStatus, modactivate => \&hModActivate});
   slog('RapidMods command handler loaded',3);
   return $self;
 }
 
 sub onUnload {
-  removeSpadsCommandHandler(['mod','modstatus']);
+  removeSpadsCommandHandler(['mod','modstatus','modactivate']);
+}
+
+# Explicit batch activation. All successful server-side RapidMods downloads
+# become dependencies of one game, never only the most recently downloaded mod.
+# This first server-side path requires the same wrapper to be built on clients
+# before a multiplayer match can start.
+sub hModActivate {
+  my ($source,$user,$p_params,$checkOnly) = @_;
+  if(@$p_params) {
+    ::invalidSyntax($user,'modactivate');
+    return 0;
+  }
+  if($busy) {
+    answer('RapidMods is busy preparing another download or game.');
+    return 0;
+  }
+  my @tags = sort keys %downloaded;
+  if(!@tags) {
+    answer('No downloaded Rapid mods are recorded on SPADS.');
+    return 0;
+  }
+  my $dataDir = getSpadsConf()->{springDataDir};
+  my $generator = '/srv/spads/deploy/generate-modded-game.py';
+  my $resolver = '/srv/spads/deploy/resolve-installed-rapid.py';
+  if(!defined($dataDir) || !-d $dataDir || !-w $dataDir || !-r $generator || !-r $resolver) {
+    answer('RapidMods activation scripts or Spring data directory unavailable.');
+    return 0;
+  }
+  return 1 if $checkOnly;
+  my $outputDir = "$dataDir/games/randomguy_active_mod_stack.sdd";
+  my @cmd = ('python3',$generator,'--data-dir',$dataDir,
+             '--output-dir',$outputDir,
+             (map { ('--mod',$_) } @tags));
+  $busy = 1;
+  sayBattle('[RapidMods] preparing modded game with '.scalar(@tags).' downloaded mods')
+    if(getLobbyState() > 3);
+  my $pid = forkProcess(
+    sub {
+      my $rc = system(@cmd);
+      exit($rc == -1 ? 127 : ($rc & 127 ? 128 + ($rc & 127) : ($rc >> 8)));
+    },
+    sub {
+      my ($rc) = @_;
+      if($rc != 0) {
+        $busy = 0;
+        slog("RapidMods dependency preparation failed (exit $rc)",2);
+        sayBattle('[RapidMods] activation failed; previous game kept')
+          if(getLobbyState() > 3);
+        return;
+      }
+      # GAME_ONLY = 2 in SPADS; do one archive refresh for the batch.
+      loadArchives(sub {
+        my ($num) = @_;
+        $busy = 0;
+        unless($num) {
+          slog('RapidMods archive refresh failed; previous game kept',2);
+          sayBattle('[RapidMods] archive refresh failed; previous game kept')
+            if(getLobbyState() > 3);
+          return;
+        }
+        # The game wrapper declares this name + version. SPADS resolves the
+        # regex to a concrete installed archive after the archive refresh.
+        updateSetting('hSet','modName','~RandomGuy Modded Battle.*');
+        rehost('RapidMods activated dependency wrapper');
+        sayBattle('[RapidMods] modded game prepared; battle rehost scheduled')
+          if(getLobbyState() > 3);
+      }, 0, 2);
+    }
+  );
+  unless($pid) {
+    $busy = 0;
+    answer('Unable to start RapidMods activation process.');
+    return 0;
+  }
+  answer('Preparing game dependencies for '.scalar(@tags).' downloaded mods.');
+  return 1;
 }
 
 sub hMod {
