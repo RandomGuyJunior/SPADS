@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import tempfile
+import importlib.util
 
 ARCHIVE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _().+\\-]*$")
 def validate(name):
@@ -50,10 +51,14 @@ def generate(foundation, mods):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--foundation-archive", required=True,
-                   help="Resolved installed name for randomguy-hosting:test")
+    p.add_argument("--data-dir", type=Path, help="Spring data directory for resolving Rapid tags")
+    p.add_argument("--foundation-tag", default="randomguy-hosting:test",
+                   help="Hosting Rapid tag (default: randomguy-hosting:test)")
+    p.add_argument("--mod", action="append", default=[], help="Custom mod Rapid tag; repeatable")
+    p.add_argument("--foundation-archive",
+                   help="Explicit resolved archive name (legacy option)")
     p.add_argument("--mod-archive", action="append", default=[],
-                   help="Resolved installed mod archive name; repeatable")
+                   help="Explicit resolved mod archive name (legacy option)")
     p.add_argument("--modoptions", type=Path, required=True,
                    help="Exported modoptions.lua from RandomGuy Hosting")
     p.add_argument("--output-dir", type=Path, required=True,
@@ -63,15 +68,33 @@ def main():
         p.error("--output-dir must end in .sdd")
     if not args.modoptions.is_file():
         p.error("RandomGuy Hosting modoptions.lua export is missing")
+    foundation = args.foundation_archive
+    mod_archives = list(args.mod_archive)
+    if args.mod:
+        if not args.data_dir:
+            p.error("--data-dir is required to resolve Rapid tags")
+        resolver_path = Path(__file__).with_name("resolve-installed-rapid.py")
+        spec = importlib.util.spec_from_file_location("rapid_archive_resolver", resolver_path)
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        resolved_foundation, _ = resolver.resolve(args.data_dir, args.foundation_tag)
+        if foundation and foundation != resolved_foundation:
+            p.error("Foundation archive differs from resolved Rapid tag")
+        foundation = resolved_foundation
+        for tag in args.mod:
+            name, _ = resolver.resolve(args.data_dir, tag)
+            mod_archives.append(name)
+    if not foundation:
+        p.error("Supply --data-dir and --mod or --foundation-archive")
     output = args.output_dir
-    manifest = generate(args.foundation_archive, args.mod_archive)
+    manifest = generate(foundation, mod_archives)
     options = args.modoptions.read_bytes()
     fingerprint = hashlib.sha256(manifest.encode("utf-8") + bytes([0]) + options).hexdigest()
     metadata = json.dumps({
         "schema_version": 1,
         "fingerprint": fingerprint,
-        "foundation_archive": args.foundation_archive,
-        "mod_archives": list(dict.fromkeys(args.mod_archive)),
+        "foundation_archive": foundation,
+        "mod_archives": list(dict.fromkeys(mod_archives)),
     }, sort_keys=True, indent=2) + chr(10)
     old_info = output / "modinfo.lua"
     old_options = output / "modoptions.lua"
