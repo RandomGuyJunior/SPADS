@@ -107,7 +107,7 @@ jobs:
           ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /srv/spads/plugins/officials/RapidMods /srv/spads/deploy'
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" plugins/officials/RapidMods/ "$USER@$HOST:/srv/spads/plugins/officials/RapidMods/"
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/download-rapid-mod.py deploy/mod-catalog-lookup.py "$USER@$HOST:/srv/spads/deploy/"
-      - name: Verify RapidMods capability deployed
+      - name: Ensure active SPADS plugin links
         if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
           HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
@@ -116,7 +116,32 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" '
             set -eu
-            grep -nF "hub-v1" /srv/spads/plugins/officials/RapidMods/RapidMods.pm
+            mkdir -p /srv/spads/var/plugins
+            for file in RapidMods.pm RapidMods.conf RapidModsCmd.conf RapidModsHelp.dat; do
+              src="/srv/spads/plugins/officials/RapidMods/$file"
+              test -f "$src"
+              dest="/srv/spads/var/plugins/$file"
+              if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+                echo "Refusing to overwrite non-symlink plugin file: $dest" >&2
+                exit 1
+              fi
+              ln -sfn "$src" "$dest"
+            done
+          '
+      - name: Verify silent RapidMods capability deployed
+        if: github.event_name == 'push' || inputs.operation == 'deploy'
+        env:
+          HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          USER: ${{ secrets.SPADS_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" '
+            set -eu
+            grep -nF "c.battle.mod_capabilities" /srv/spads/plugins/officials/RapidMods/RapidMods.pm
+            if grep -nF "[RapidMods] hub-v1" /srv/spads/plugins/officials/RapidMods/RapidMods.pm; then
+              echo "Obsolete chat capability advertisement still deployed" >&2
+              exit 1
+            fi
           '
       - name: Deploy without restarting SPADS
         if: github.event_name == 'push' || inputs.operation == 'deploy'
