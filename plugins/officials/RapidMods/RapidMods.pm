@@ -2,11 +2,56 @@ package RapidMods;
 use strict;
 use warnings;
 use SpadsPluginApi;
+use JSON::PP qw(encode_json decode_json);
 
 my $pluginVersion = '0.1';
 my $requiredSpadsVersion = '0.11.4';
 my %params = (commandsFile => ['notNull'], helpFile => ['notNull']);
 my $busy = 0;
+my $stateFile = '/srv/spads/var/rapidmods-downloaded.json';
+my %downloaded;
+
+sub loadDownloaded {
+  %downloaded = ();
+  return unless -f $stateFile;
+  if(open my $fh, '<', $stateFile) {
+    local $/;
+    my $raw = <$fh>;
+    close $fh;
+    eval {
+      my $data = decode_json($raw);
+      if(ref($data) eq 'HASH' && ref($data->{tags}) eq 'ARRAY') {
+        for my $tag (@{$data->{tags}}) {
+          $downloaded{$tag} = 1 if defined($tag) && $tag =~ /\A[A-Za-z0-9_-]+:[A-Za-z0-9_-]+\z/;
+        }
+      }
+    };
+    slog("RapidMods state file unreadable: $@",2) if $@;
+  }
+}
+
+sub saveDownloaded {
+  my $temp = "$stateFile.tmp.$";
+  if(open my $fh, '>', $temp) {
+    print {$fh} encode_json({schema_version => 1, tags => [sort keys %downloaded]});
+    close $fh;
+    if(!rename($temp,$stateFile)) {
+      slog("RapidMods state file rename failed: $!",2);
+      unlink $temp;
+    }
+  } else { slog("RapidMods state file write failed: $!",2); }
+}
+
+sub hModStatus {
+  my ($source,$user,$p_params,$checkOnly) = @_;
+  return 1 if $checkOnly;
+  # Private reply is intentional: do not flood battle chat on every join.
+  # These tags are server-downloaded, NOT necessarily activated for this battle.
+  my $tags = join(',',sort keys %downloaded);
+  sayPrivate($user,"[RapidModsState] downloaded=$tags") if(getLobbyState() > 3);
+  return 1;
+}
+
 
 # Register once per opened battle with TEI's private capability protocol.
 # The capability is never posted to battle chat.
@@ -37,13 +82,14 @@ sub getParams { return [\%params, {}] }
 
 sub new {
   my $self = bless({}, shift);
-  addSpadsCommandHandler({mod => \&hMod});
+  loadDownloaded();
+  addSpadsCommandHandler({mod => \&hMod, modstatus => \&hModStatus});
   slog('RapidMods command handler loaded',3);
   return $self;
 }
 
 sub onUnload {
-  removeSpadsCommandHandler(['mod']);
+  removeSpadsCommandHandler(['mod','modstatus']);
 }
 
 sub hMod {
@@ -77,6 +123,8 @@ sub hMod {
       my ($rc) = @_;
       $busy = 0;
       if($rc == 0) {
+        $downloaded{$tag} = 1;
+        saveDownloaded();
         slog("Rapid download completed for $tag",3);
         sayBattle("[RapidMods] installed $tag") if(getLobbyState() > 3);
         sayPrivate($user,"Rapid download completed for $tag. Archive refresh may be required.")
