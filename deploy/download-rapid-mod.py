@@ -37,8 +37,12 @@ def install(tag, data_dir, downloader="pr-downloader", timeout=1800, dry_run=Fal
     if not data.is_dir() or not os.access(data, os.W_OK | os.X_OK):
         raise RuntimeError(f"Spring data directory is missing or not writable: {data}")
     tool = shutil.which(downloader)
+    if not tool and downloader == "pr-downloader":
+        recoil_dir = data.parent / "recoil"
+        candidates = sorted(recoil_dir.glob("*/pr-downloader"), reverse=True)
+        tool = next((str(p) for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)
     if not tool:
-        raise RuntimeError(f"Downloader not found in PATH: {downloader}")
+        raise RuntimeError(f"Downloader not found in PATH or Recoil directory: {downloader}")
     lookup = load_lookup()
     published = lookup.find_tag(tag)
     if published is None:
