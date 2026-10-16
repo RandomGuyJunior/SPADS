@@ -59,14 +59,14 @@ def main():
                    help="Explicit resolved archive name (legacy option)")
     p.add_argument("--mod-archive", action="append", default=[],
                    help="Explicit resolved mod archive name (legacy option)")
-    p.add_argument("--modoptions", type=Path, required=True,
+    p.add_argument("--modoptions", type=Path,
                    help="Exported modoptions.lua from RandomGuy Hosting")
     p.add_argument("--output-dir", type=Path, required=True,
                    help="Destination directory ending in .sdd")
     args = p.parse_args()
     if args.output_dir.suffix != ".sdd":
         p.error("--output-dir must end in .sdd")
-    if not args.modoptions.is_file():
+    if args.modoptions and not args.modoptions.is_file():
         p.error("RandomGuy Hosting modoptions.lua export is missing")
     foundation = args.foundation_archive
     mod_archives = list(args.mod_archive)
@@ -88,7 +88,7 @@ def main():
         p.error("Supply --data-dir and --mod or --foundation-archive")
     output = args.output_dir
     manifest = generate(foundation, mod_archives)
-    options = args.modoptions.read_bytes()
+    options = args.modoptions.read_bytes() if args.modoptions else b""
     fingerprint = hashlib.sha256(manifest.encode("utf-8") + bytes([0]) + options).hexdigest()
     metadata = json.dumps({
         "schema_version": 1,
@@ -100,7 +100,7 @@ def main():
     old_options = output / "modoptions.lua"
     if (old_info.is_file() and old_options.is_file()
             and old_info.read_text(encoding="utf-8") == manifest
-            and old_options.read_bytes() == options):
+            and ((not args.modoptions and not old_options.exists()) or (args.modoptions and old_options.is_file() and old_options.read_bytes() == options))):
         print("Unchanged; no archive refresh needed:", output)
         print("Fingerprint:", fingerprint)
         return
@@ -110,7 +110,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix=".rgmod-stage-", dir=output.parent) as temp:
         staged = Path(temp)
         (staged / "modinfo.lua").write_text(manifest, encoding="utf-8")
-        (staged / "modoptions.lua").write_bytes(options)
+        if args.modoptions:
+            (staged / "modoptions.lua").write_bytes(options)
         (staged / "rapidmods-state.json").write_text(metadata, encoding="utf-8")
         if output.exists():
             backup = output.with_name(output.name + ".previous")
