@@ -8,16 +8,8 @@ my $requiredSpadsVersion = '0.11.4';
 my %params = (commandsFile => ['notNull'], helpFile => ['notNull']);
 my $busy = 0;
 
-# The client requires a positive capability announcement from the battle founder.
-# An official SPADS host does not advertise this protocol.
-sub advertiseModHub {
-  return 1 unless(getLobbyState() > 5);
-  sayBattle('[RapidMods] hub-v1');
-  return 1;
-}
-
-sub onJoinedBattle { advertiseModHub() }
-sub onBattleOpened { advertiseModHub() }
+# Mod Hub capability negotiation belongs to TEI protocol metadata, not battle chat.
+# Until that transport is available, SPADS must not announce it in chat.
 
 
 # SPADS invokes this before checking direct/vote access. Only the battle
