@@ -45,7 +45,7 @@ sub saveDownloaded {
 sub publishDownloaded {
   return unless getLobbyState() > 3;
   my $tags = join(',',sort keys %downloaded);
-  queueLobbyCommand(['c.battle.mod_inventory', $tags]);
+  queueLobbyCommand(['c.battle.mod_inventory', length($tags) ? $tags : '-']);
 }
 
 sub hModStatus {
