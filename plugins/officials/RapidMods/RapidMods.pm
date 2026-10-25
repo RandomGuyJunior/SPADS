@@ -42,6 +42,12 @@ sub saveDownloaded {
   } else { slog("RapidMods state file write failed: $!",2); }
 }
 
+sub publishDownloaded {
+  return unless getLobbyState() > 3;
+  my $tags = join(',',sort keys %downloaded);
+  queueLobbyCommand(['c.battle.mod_inventory', $tags]);
+}
+
 sub hModStatus {
   my ($source,$user,$p_params,$checkOnly) = @_;
   return 1 if $checkOnly;
@@ -57,6 +63,7 @@ sub hModStatus {
 # The capability is never posted to battle chat.
 sub onBattleOpened {
   queueLobbyCommand(['c.battle.mod_capabilities', 'rapid-mods-v1']);
+  publishDownloaded();
   slog('Requested TEI rapid-mods-v1 capability registration', 3);
   return 1;
 }
@@ -206,6 +213,7 @@ sub hMod {
       if($rc == 0) {
         $downloaded{$tag} = 1;
         saveDownloaded();
+        publishDownloaded();
         slog("Rapid download completed for $tag",3);
         sayBattle("[RapidMods] installed $tag") if(getLobbyState() > 3);
         sayPrivate($user,"Rapid download completed for $tag. Archive refresh may be required.")
