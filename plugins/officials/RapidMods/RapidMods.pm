@@ -46,19 +46,12 @@ sub publishDownloaded {
   return unless getLobbyState() > 3;
   my $tags = join(',',sort keys %downloaded);
   queueLobbyCommand(['c.battle.mod_inventory', length($tags) ? $tags : '-']);
+  # No downloaded Rapid mod is active until the battle actually switches to
+  # a wrapper game. Preparing a wrapper does not enable it.
+  queueLobbyCommand(['c.battle.mod_enabled', '-']);
 }
 
-sub hModStatus {
-  my ($source,$user,$p_params,$checkOnly) = @_;
-  return 1 if $checkOnly;
-  # Private reply is intentional: do not flood battle chat on every join.
-  # These tags are server-downloaded, NOT necessarily activated for this battle.
-  my $tags = join(',',sort keys %downloaded);
-  sayPrivate($user,"[RapidModsState] downloaded=$tags") if(getLobbyState() > 3);
-  return 1;
-}
-
-
+# Inventory is delivered through TEI battle metadata, not a chat command.
 # Register once per opened battle with TEI's private capability protocol.
 # The capability is never posted to battle chat.
 sub onBattleOpened {
@@ -90,13 +83,13 @@ sub getParams { return [\%params, {}] }
 sub new {
   my $self = bless({}, shift);
   loadDownloaded();
-  addSpadsCommandHandler({mod => \&hMod, modstatus => \&hModStatus, modactivate => \&hModActivate});
+  addSpadsCommandHandler({mod => \&hMod, modactivate => \&hModActivate});
   slog('RapidMods command handler loaded',3);
   return $self;
 }
 
 sub onUnload {
-  removeSpadsCommandHandler(['mod','modstatus','modactivate']);
+  removeSpadsCommandHandler(['mod','modactivate']);
 }
 
 # Explicit batch activation. All successful server-side RapidMods downloads
