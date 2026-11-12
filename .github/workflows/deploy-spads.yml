@@ -90,7 +90,7 @@ jobs:
       - name: Validate RapidMods Perl syntax before deployment
         run: |
           set -euo pipefail
-          perl -c plugins/officials/RapidMods/RapidMods.pm
+          perl -Isrc -c plugins/officials/RapidMods/RapidMods.pm
 
       - name: Upload approved deployment files
         if: github.event_name == 'push' || inputs.operation == 'deploy'
