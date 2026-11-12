@@ -106,7 +106,7 @@ jobs:
           set -euo pipefail
           ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$USER@$HOST" 'mkdir -p /srv/spads/plugins/officials/RapidMods /srv/spads/deploy'
           rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" plugins/officials/RapidMods/ "$USER@$HOST:/srv/spads/plugins/officials/RapidMods/"
-          rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/download-rapid-mod.py deploy/mod-catalog-lookup.py "$USER@$HOST:/srv/spads/deploy/"
+          rsync -az -e "ssh -i $HOME/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" deploy/download-rapid-mod.py deploy/discover-installed-rapid.py deploy/mod-catalog-lookup.py "$USER@$HOST:/srv/spads/deploy/"
       - name: Ensure active SPADS plugin links
         if: github.event_name == 'push' || inputs.operation == 'deploy'
         env:
