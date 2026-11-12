@@ -1,0 +1,28 @@
+name: Test SPADS SSH authentication
+on:
+  push:
+    branches: [master]
+    paths: ['.github/workflows/test-spads-ssh.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ssh-test:
+    runs-on: ubuntu-latest
+    environment: spads-production
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.SPADS_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.SPADS_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.SPADS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SPADS_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/spads_deploy
+          chmod 600 ~/.ssh/spads_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -y -P '' -f ~/.ssh/spads_deploy >/dev/null
+          ssh -i ~/.ssh/spads_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=15 "$DEPLOY_USER@$DEPLOY_HOST" 'echo "SSH authentication successful as $(whoami)"; test -d /srv/spads'
