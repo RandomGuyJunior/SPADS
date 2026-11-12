@@ -31,7 +31,7 @@ sub loadDownloaded {
 }
 
 sub saveDownloaded {
-  my $temp = "${stateFile}.tmp.$";
+  my $temp = $stateFile . '.tmp.' . $;
   if(open my $fh, '>', $temp) {
     print {$fh} encode_json({schema_version => 1, tags => [sort keys %downloaded]});
     close $fh;
