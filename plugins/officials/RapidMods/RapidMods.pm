@@ -31,7 +31,7 @@ sub loadDownloaded {
 }
 
 sub saveDownloaded {
-  my $temp = "$stateFile.tmp.$";
+  my $temp = "${stateFile}.tmp.$";
   if(open my $fh, '>', $temp) {
     print {$fh} encode_json({schema_version => 1, tags => [sort keys %downloaded]});
     close $fh;
@@ -40,6 +40,37 @@ sub saveDownloaded {
       unlink $temp;
     }
   } else { slog("RapidMods state file write failed: $!",2); }
+}
+
+# Reconcile recorded tags against the installed Rapid package manifests.
+# A tag is installed only if its cached versions.gz index resolves to an
+# existing .sdp. Also discover dev-mods installed by the startup downloader.
+sub refreshDownloaded {
+  my $dataDir = getSpadsConf()->{springDataDir};
+  return unless defined($dataDir) && -d $dataDir;
+  my $script = '/srv/spads/deploy/discover-installed-rapid.py';
+  unless(-r $script) {
+    slog('RapidMods inventory discovery script unavailable',2);
+    return;
+  }
+  my $pid = open(my $fh, '-|', 'python3', $script, '--data-dir', $dataDir);
+  unless(defined $pid) {
+    slog("RapidMods inventory discovery failed to start: $!",2);
+    return;
+  }
+  my %found;
+  while(my $line = <$fh>) {
+    chomp $line;
+    $found{$line} = 1 if $line =~ /\\Adev-mods:[A-Za-z0-9_-]+\\z/;
+  }
+  my $ok = close($fh);
+  unless($ok) {
+    slog('RapidMods inventory discovery failed; retaining previous inventory',2);
+    return;
+  }
+  my $changed = join(',',sort keys %downloaded) ne join(',',sort keys %found);
+  %downloaded = %found;
+  saveDownloaded() if $changed;
 }
 
 sub publishDownloaded {
@@ -55,6 +86,7 @@ sub publishDownloaded {
 # Register once per opened battle with TEI's private capability protocol.
 # The capability is never posted to battle chat.
 sub onBattleOpened {
+  refreshDownloaded();
   queueLobbyCommand(['c.battle.mod_capabilities', 'rapid-mods-v1']);
   publishDownloaded();
   slog('Requested TEI rapid-mods-v1 capability registration', 3);
@@ -83,6 +115,7 @@ sub getParams { return [\%params, {}] }
 sub new {
   my $self = bless({}, shift);
   loadDownloaded();
+  refreshDownloaded();
   addSpadsCommandHandler({mod => \&hMod, modactivate => \&hModActivate});
   slog('RapidMods command handler loaded',3);
   return $self;
@@ -106,6 +139,7 @@ sub hModActivate {
     answer('RapidMods is busy preparing another download or game.');
     return 0;
   }
+  refreshDownloaded();
   my @tags = sort keys %downloaded;
   if(!@tags) {
     answer('No downloaded Rapid mods are recorded on SPADS.');
